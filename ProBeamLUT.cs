@@ -237,5 +237,15 @@ namespace TreatmentTime
             };
 
         public static float layerSwitchTime = 1;
+
+        public const int beamCurrentMaxAllowedGlobal = 550;
+
+        public const double beamCurrentMaxAllowedAtMaxEnergy = 190.3826;
+
+        public const double maxCurrentViolationMultiplier = 1.05;
+
+        public const double beamCurrentViolationMUMultiplier = 0.9;
+
+        public const double maxBeamCurrentDeviation = 100 * 7;
     }
 }

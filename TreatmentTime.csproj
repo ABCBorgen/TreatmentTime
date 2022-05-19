@@ -59,7 +59,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ProBeamLUT.cs" />
-    <Compile Include="ProtonBeam.cs" />
+    <Compile Include="ProtonBeamTime.cs" />
     <Compile Include="TreatmentTime.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
