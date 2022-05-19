@@ -10,8 +10,8 @@ namespace TreatmentTime
     class ProtonBeam
     {
         const float layerShiftTime = 1;
-        public List<double> BeamOnLayerTimeList { get; set; } = new List<double>();
-        public List<double> BeamOffLayerTimeList { get; set; } = new List<double>();
+        public List<List<double>> BeamOnLayerTimeList { get; set; } = new List<List<double>>();
+        public List<List<double>> BeamOffLayerTimeList { get; set; } = new List<List<double>>();
         public List<double> TotalBeamTimeList { get; set; } = new List<double>();
         public void CalcTotalBeamTime()
         {
@@ -19,7 +19,7 @@ namespace TreatmentTime
             double layerStartTime = 0;
             for (int i = 0; i < BeamOnLayerTimeList.Count; i++)
             {
-                double t_end = BeamOffLayerTimeList[i] + BeamOnLayerTimeList[i] + layerStartTime;
+                double t_end = BeamOffLayerTimeList[i].Sum() + BeamOnLayerTimeList[i].Sum() + layerStartTime;
                 //double t_start = t_end - beamOnLayerTimeList[i];
                 layerStartTime = t_end + layerShiftTime;
                 tempTotalBeamTimeList.Add(t_end);

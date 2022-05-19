@@ -38,10 +38,10 @@ namespace VMS.TPS
         private List<ProtonBeam> ProtonBeams = new List<ProtonBeam>();
 
         private void CalculateTreatmentTime(PlanSetup plan)
-        { 
+        {
             //PlanSetup plan = context.PlanSetup;
             IonPlanSetup ionPlan = plan as IonPlanSetup;
-            if(ionPlan == null)
+            if (ionPlan == null)
             {
                 MessageBox.Show("Please load a plan.");
                 return;
@@ -53,85 +53,107 @@ namespace VMS.TPS
             }
             string message = "Field delivery times in seconds. Layer Switch time = 1\r\n";
             message += "Field\t\tOn Time\t\tWait Time\t\tTotal Time";
-            //message += "---------------------------------------------------------\r\n";
-            
-            double waitTime = 0.0;
+
             List<double> waitTimeLayerList = new List<double>();
             List<double> onTimeLayerList = new List<double>();
             List<ProtonBeam> ProtonBeamList = new List<ProtonBeam>();
-            double cumMetersetWeight = 0.0;
-            double MUforField = 0.0;
-            double MUperCumMeterSetWeightForCurrentField = 0.0;
-            double minMUForFinalLayer = 0.0;
-            double energyForFinalLayer = 0.0;
-            
 
             foreach (IonBeam beam in ionPlan.IonBeams)
             {
-                if(!beam.GetEditableParameters().IonControlPointPairs.Any())
+                var protonBeam = calcBeamTreatmentTime(beam);
+                if(protonBeam == null)
                 {
-                    MessageBox.Show("No ControlPoint Pairs in field " + beam.Id.ToString() + ". Might need to recalculate dose.");
+                    return;
                 }
-                ProtonBeam protonbeam = new ProtonBeam(beam);
-                List<double> beamCurrentEstimateList = new List<double>();
-                MUforField = beam.Meterset.Value;
-                IonControlPointPairCollection IonControlPointPairList = beam.GetEditableParameters().IonControlPointPairs;
-                cumMetersetWeight = IonControlPointPairList.LastOrDefault().EndControlPoint.MetersetWeight;
-                MUperCumMeterSetWeightForCurrentField = (MUforField / cumMetersetWeight);
-                minMUForFinalLayer = GetMUForControlPointPair(MUperCumMeterSetWeightForCurrentField, IonControlPointPairList.LastOrDefault()).Min();
-                energyForFinalLayer = IonControlPointPairList.LastOrDefault().NominalBeamEnergy;
-                List<List<double>> muPlanList = new List<List<double>>();
-                List<double> CPPairEnergyList = new List<double>();
-                List<double> genericNormalizedBeamCurrentList = new List<double>();
-                foreach (IonControlPointPair CPPair in IonControlPointPairList)
-                {
-                    List<double> xPlan = new List<double>();
-                    List<double> yPlan = new List<double>();
-                    List<double> spotWeights = new List<double>();
-                    foreach (IonSpotParameters spot in CPPair.FinalSpotList)
-                    {
-                        xPlan.Add(spot.X);
-                        yPlan.Add(spot.Y);
-                    }
-                    List<double> muPlan = GetMUForControlPointPair(MUperCumMeterSetWeightForCurrentField, CPPair);
-                    muPlanList.Add(muPlan);
-                    CPPairEnergyList.Add(CPPair.NominalBeamEnergy);
-                    double genericNormalizedBeamCurrent = LinearInterp(CPPair.NominalBeamEnergy, ProBeamLUT.energyTable, ProBeamLUT.genericNormalizedBeamCurrentTable);
-                    genericNormalizedBeamCurrentList.Add(genericNormalizedBeamCurrent);
-                    beamCurrentEstimateList.Add(GetBeamCurrentEstimate(muPlan, genericNormalizedBeamCurrent, minMUForFinalLayer));
-                    waitTime = GetWaitTime(xPlan, yPlan, CPPair.NominalBeamEnergy);
-                    protonbeam.BeamOffLayerTimeList.Add(waitTime);
-                }
-
-                List<double> beamCurrentReEstimateList = GetBeamCurrentReEstimateList(beamCurrentEstimateList, muPlanList, CPPairEnergyList);
-            
-                List<double> beamCurrentMaxAllowedLayerList = GetBeamCurrentMaxAllowedLayer(genericNormalizedBeamCurrentList);
-                List<bool> beamCurrentViolationFlags = GetBeamCurrentViolations(beamCurrentReEstimateList, beamCurrentMaxAllowedLayerList);
-                List<double> beamCurrentNoViolations = RemoveBeamCurrentViolations(beamCurrentReEstimateList, beamCurrentMaxAllowedLayerList, beamCurrentViolationFlags);
-
-                List<double> estimatedMUperMS = new List<double>();
-                for (int i = 0; i < beamCurrentNoViolations.Count; i++)
-                {
-                    estimatedMUperMS.Add(GetMUperMS(CPPairEnergyList[i], beamCurrentNoViolations[i]));
-                    if (beamCurrentViolationFlags[0] && !beamCurrentViolationFlags[i])
-                    {
-                        estimatedMUperMS[i] = estimatedMUperMS[i] * 0.9;
-                    }
-                }
-                for (int i = 0; i < muPlanList.Count; i++)
-                {
-                    protonbeam.BeamOnLayerTimeList.Add((muPlanList[i].Select((dValue, index) => (dValue / estimatedMUperMS[i]) / 1000)).Sum());
-                }
-                protonbeam.CalcTotalBeamTime();
-                ProtonBeamList.Add(protonbeam);
-                message += "\r\n" + beam.Id + "\t\t" + Math.Round(protonbeam.BeamOnLayerTimeList.Sum(), dec) + "\t\t" + Math.Round(protonbeam.BeamOffLayerTimeList.Sum(), dec) + "\t\t" + Math.Round(protonbeam.TotalBeamTimeList.Last(), dec).ToString();
+                ProtonBeamList.Add(protonBeam);
+                message += "\r\n" + beam.Id + "\t\t" + Math.Round(protonBeam.BeamOnLayerTimeList.SelectMany(spotList => spotList).Sum(), dec) + "\t\t" + Math.Round(protonBeam.BeamOffLayerTimeList.SelectMany(spotList => spotList).Sum(), dec) + "\t\t" + Math.Round(protonBeam.TotalBeamTimeList.Last(), dec).ToString();
             }
+
             ProtonBeams = ProtonBeamList;
             System.Windows.MessageBox.Show(message);
             ShowDetailedBeamMessage();
+
         }
 
-        
+
+        ProtonBeam calcBeamTreatmentTime(IonBeam beam)
+        {
+            if (!beam.GetEditableParameters().IonControlPointPairs.Any())
+            {
+                MessageBox.Show("No ControlPoint Pairs in field " + beam.Id.ToString() + ". Might need to recalculate dose.");
+                return null;
+            }
+            ProtonBeam protonbeam = new ProtonBeam(beam);
+            List<double> beamCurrentEstimateList = new List<double>();
+            var MUforField = beam.Meterset.Value;
+            IonControlPointPairCollection IonControlPointPairList = beam.GetEditableParameters().IonControlPointPairs;
+            var cumMetersetWeight = IonControlPointPairList.LastOrDefault().EndControlPoint.MetersetWeight;
+            var MUperCumMeterSetWeightForCurrentField = (MUforField / cumMetersetWeight);
+            var minMUForFinalLayer = GetMUForControlPointPair(MUperCumMeterSetWeightForCurrentField, IonControlPointPairList.LastOrDefault()).Min();
+            var energyForFinalLayer = IonControlPointPairList.LastOrDefault().NominalBeamEnergy;
+            List<List<double>> muPlanList = new List<List<double>>();
+            List<double> CPPairEnergyList = new List<double>();
+            List<double> genericNormalizedBeamCurrentList = new List<double>();
+            foreach (IonControlPointPair CPPair in IonControlPointPairList)
+            {
+                List<double> xPlan = new List<double>();
+                List<double> yPlan = new List<double>();
+                List<double> spotWeights = new List<double>();
+                foreach (IonSpotParameters spot in CPPair.FinalSpotList)
+                {
+                    xPlan.Add(spot.X);
+                    yPlan.Add(spot.Y);
+                }
+                List<double> muPlan = GetMUForControlPointPair(MUperCumMeterSetWeightForCurrentField, CPPair);
+                muPlanList.Add(muPlan);
+                CPPairEnergyList.Add(CPPair.NominalBeamEnergy);
+                double genericNormalizedBeamCurrent = LinearInterp(CPPair.NominalBeamEnergy, ProBeamLUT.energyTable, ProBeamLUT.genericNormalizedBeamCurrentTable);
+                genericNormalizedBeamCurrentList.Add(genericNormalizedBeamCurrent);
+                beamCurrentEstimateList.Add(GetBeamCurrentEstimate(muPlan, genericNormalizedBeamCurrent, minMUForFinalLayer));
+                protonbeam.BeamOffLayerTimeList.Add(GetWaitTime(xPlan, yPlan, CPPair.NominalBeamEnergy));
+            }
+
+            List<double> beamCurrentReEstimateList = GetBeamCurrentReEstimateList(beamCurrentEstimateList, muPlanList, CPPairEnergyList);
+
+            List<double> beamCurrentMaxAllowedLayerList = GetBeamCurrentMaxAllowedLayer(genericNormalizedBeamCurrentList);
+            List<bool> beamCurrentViolationFlags = GetBeamCurrentViolations(beamCurrentReEstimateList, beamCurrentMaxAllowedLayerList);
+            List<double> beamCurrentNoViolations = RemoveBeamCurrentViolations(beamCurrentReEstimateList, beamCurrentMaxAllowedLayerList, beamCurrentViolationFlags);
+
+            List<double> estimatedMUperMS = new List<double>();
+            for (int i = 0; i < beamCurrentNoViolations.Count; i++)
+            {
+                estimatedMUperMS.Add(GetMUperMS(CPPairEnergyList[i], beamCurrentNoViolations[i]));
+                if (beamCurrentViolationFlags[0] && !beamCurrentViolationFlags[i])
+                {
+                    estimatedMUperMS[i] = estimatedMUperMS[i] * 0.9;
+                }
+            }
+            for (int i = 0; i < muPlanList.Count; i++)
+            {
+                protonbeam.BeamOnLayerTimeList.Add(muPlanList[i].Select((dValue, index) => (dValue / estimatedMUperMS[i]) / 1000).ToList());
+            }
+            protonbeam.CalcTotalBeamTime();
+            return protonbeam;
+        }
+
+        private void button1_Click(object sender, System.EventArgs e)
+        {
+            System.IO.Stream myStream;
+            var dlg = new Microsoft.Win32.SaveFileDialog();
+
+            dlg.Filter = "txt files (*.txt)|*.txt|All files (*.*)|*.*";
+            dlg.FilterIndex = 2;
+            dlg.RestoreDirectory = true;
+
+            if (dlg.ShowDialog() != null)
+            {
+                if ((myStream = dlg.OpenFile()) != null)
+                {
+                    // Code to write the stream goes here.
+                    myStream.Close();
+                }
+            }
+        }
 
         public void ShowDetailedBeamMessage()
         {
@@ -143,8 +165,8 @@ namespace VMS.TPS
                 for (int i = 0; i < protonbeam.BeamOnLayerTimeList.Count; i++)
                 {
                     detailedBeamMessage += (i + 1).ToString() + "\t\t"
-                                        + Math.Round(protonbeam.BeamOnLayerTimeList[i], dec).ToString() + "\t\t"
-                                        + Math.Round(protonbeam.BeamOffLayerTimeList[i], dec).ToString() + "\t\t"
+                                        + Math.Round(protonbeam.BeamOnLayerTimeList[i].Sum(), dec).ToString() + "\t\t"
+                                        + Math.Round(protonbeam.BeamOffLayerTimeList[i].Sum(), dec).ToString() + "\t\t"
                                         + Math.Round(protonbeam.TotalBeamTimeList[i], dec).ToString() + "\r\n";
                 }
                 System.Windows.MessageBox.Show(detailedBeamMessage);
@@ -156,7 +178,7 @@ namespace VMS.TPS
 
         }
 
-        private List<double> GetBeamCurrentMaxAllowedLayer(List<double> genericNormalizedBeamCurrentList)
+        public List<double> GetBeamCurrentMaxAllowedLayer(List<double> genericNormalizedBeamCurrentList)
         {
             const int beamCurrentMaxAllowedGlobal = 550;
             const double beamCurrentMaxAllowedAtMaxEnergy = 190.3826;
@@ -172,7 +194,7 @@ namespace VMS.TPS
             return beamCurrentMaxAllowedLayerList;
         }
 
-        private List<bool> GetBeamCurrentViolations(List<double> beamCurrentList, List<double> beamCurrentMaxAllowedLayerList)
+        public List<bool> GetBeamCurrentViolations(List<double> beamCurrentList, List<double> beamCurrentMaxAllowedLayerList)
         {
             List<bool> isMaxCurrentViolated = new List<bool>();
             for (int i = 0; i < beamCurrentList.Count; i++)
@@ -189,7 +211,7 @@ namespace VMS.TPS
             return isMaxCurrentViolated;
         }
 
-        private List<double> RemoveBeamCurrentViolations(List<double> estimatedBeamCurrent, List<double> beamCurrentMaxAllowedLayer, List<bool> isMaxCurrentViolated)
+        public List<double> RemoveBeamCurrentViolations(List<double> estimatedBeamCurrent, List<double> beamCurrentMaxAllowedLayer, List<bool> isMaxCurrentViolated)
         {
             for (int i = 0; i < estimatedBeamCurrent.Count; i++)
             {
@@ -213,7 +235,7 @@ namespace VMS.TPS
             return estimatedBeamCurrent;
         }
 
-        private List<double> GetMUForControlPointPair(double MUperCumMeterSetWeight, IonControlPointPair CPPair)
+        public static List<double> GetMUForControlPointPair(double MUperCumMeterSetWeight, IonControlPointPair CPPair)
         {
             List<double> spotWeights = new List<double>();
             foreach (IonSpotParameters spot in CPPair.FinalSpotList)
@@ -224,7 +246,7 @@ namespace VMS.TPS
             return muPlan;
         }
 
-        private List<double> GetShift(List<double> posMap)
+        public List<double> GetShift(List<double> posMap)
         {
             List<double> mapShift = new List<double>();
             mapShift.Add(0.0);
@@ -232,7 +254,7 @@ namespace VMS.TPS
             return mapShift;
         }
 
-        private int GetEnergyIndexFloor(double energy)
+        public int GetEnergyIndexFloor(double energy)
         {
             for (int i = 0; i < ProBeamLUT.energyTable.Count; i++)
             {
@@ -242,7 +264,7 @@ namespace VMS.TPS
             return 0;
         }
 
-        private double LinearInterp(double energy, List<double> xList, List<double> yList)
+        public double LinearInterp(double energy, List<double> xList, List<double> yList)
         {
             if (energy > ProBeamLUT.energyTable.Max())
             {
@@ -265,21 +287,21 @@ namespace VMS.TPS
             return yList[indexFloor] + (energy - xList[indexFloor]) * (yList[indexFloor + 1] - yList[indexFloor]) / (xList[indexFloor + 1] - xList[indexFloor]);
         }
 
-        private double GetMUperMS(double energy, double beamCurrent)
+        public double GetMUperMS(double energy, double beamCurrent)
         {
             double p1 = LinearInterp(energy, ProBeamLUT.energyTable, ProBeamLUT.p1Table);
             double p2 = LinearInterp(energy, ProBeamLUT.energyTable, ProBeamLUT.p2Table);
             return p1 * beamCurrent + p2;
         }
 
-        private double GetBeamCurrentEstimate(List<double> muPlan, double genericNormalizedBeamCurrent, double finalLayerMU)
+        public double GetBeamCurrentEstimate(List<double> muPlan, double genericNormalizedBeamCurrent, double finalLayerMU)
         {
             double scaledMinMu = muPlan.Min() / finalLayerMU;
             double scaledBeamCurrent = genericNormalizedBeamCurrent * scaledMinMu;
             return scaledBeamCurrent;
         }
 
-        private List<double> GetBeamCurrentReEstimateList(List<double> scaledBeamCurrentList, List<List<double>> planMUList, List<double> energy)
+        public List<double> GetBeamCurrentReEstimateList(List<double> scaledBeamCurrentList, List<List<double>> planMUList, List<double> energy)
         {
             const int beamCurrentMaxAllowedGlobal = 550;
             double minAllowedSpotDuration = 0.0030;
@@ -298,34 +320,28 @@ namespace VMS.TPS
             return beamCurrentReEstimateList;
         }
 
-        private double GetWaitTime(List<double> xLayer, List<double> yLayer, double energy)
+        private List<double> StepTimeFit(List<double> shiftList, List<double> fit, double energy)
         {
-            List<double> xShift = GetShift(xLayer);
-            List<double> yShift = GetShift(yLayer);
-
-            //Create function
-            List<double> stepTimeXfit = new List<double>();
-            foreach (double shift in xShift)
+            List<double> stepTimeFit = new List<double>();
+            foreach (double shift in shiftList)
             {
-                stepTimeXfit.Add(ProBeamLUT.xFit[0] + ProBeamLUT.xFit[1] * shift + ProBeamLUT.xFit[2] * energy + ProBeamLUT.xFit[3] * shift * energy + ProBeamLUT.xFit[4] * energy * energy);
+                stepTimeFit.Add(fit[0] + fit[1] * shift + fit[2] * energy + fit[3] * shift * energy + fit[4] * energy * energy);
             }
+            return stepTimeFit;
+        }
 
-            List<double> stepTimeYfit = new List<double>();
-            foreach (double shift in yShift)
-            {
-                stepTimeYfit.Add(ProBeamLUT.yFit[0] + ProBeamLUT.yFit[1] * shift + ProBeamLUT.yFit[2] * energy + ProBeamLUT.yFit[3] * shift * energy + ProBeamLUT.yFit[4] * energy * energy);
-            }
-
+        private List<double> GetMaxValues(List<double> xShift, List<double> yShift, List<double> xStepTime, List<double> yStepTime)
+        {
             List<double> maxValueXY = new List<double>();
-            for (int i = 0; i < stepTimeXfit.Count; i++)
+            for (int i = 0; i < xStepTime.Count; i++)
             {
                 if (xShift[i] > 10 || yShift[i] > 10)
                 {
-                    if (stepTimeXfit[i] > stepTimeYfit[i])
-                        maxValueXY.Add(stepTimeXfit[i]);
+                    if (xStepTime[i] > yStepTime[i])
+                        maxValueXY.Add(xStepTime[i]);
                     else
                     {
-                        maxValueXY.Add(stepTimeYfit[i]);
+                        maxValueXY.Add(yStepTime[i]);
                     }
                 }
                 else
@@ -333,8 +349,20 @@ namespace VMS.TPS
                     maxValueXY.Add(0.0);
                 }
             }
-            double timeWaitSum = maxValueXY.Sum();
-            return timeWaitSum;
+            return maxValueXY;
+        }
+
+        public List<double> GetWaitTime(List<double> xLayer, List<double> yLayer, double energy)
+        {
+            List<double> xShift = GetShift(xLayer);
+            List<double> yShift = GetShift(yLayer);
+
+            List<double> stepTimeXfit = StepTimeFit(xShift, ProBeamLUT.xFit, energy);
+            List<double> stepTimeYfit = StepTimeFit(yShift, ProBeamLUT.yFit, energy);
+
+            List<double> maxValueXY = GetMaxValues(xShift, yShift, stepTimeXfit, stepTimeYfit);
+
+            return maxValueXY;
         }
     }
 }
