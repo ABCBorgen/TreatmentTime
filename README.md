@@ -14,5 +14,6 @@ Quick example:
     pbt.BeamOnLayerTimeList  // List of lists of spot on times for each layer
     pbt.BeamOffLayerTimeList // List of lists of spot off times for each layer
     pbt.BeamTotLayerTimeList // List of lists of spot on + spot off for each layer
+    pbt.CumBeamTotLayerTimeList // List of lists of spot on + spot off for each layer, added cumulatively, including layer switch times.
     pbt.TotalBeamTimeList    // List of delivery times for each field. This includes layer switch times.`
 ```
