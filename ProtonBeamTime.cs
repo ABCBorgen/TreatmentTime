@@ -19,12 +19,17 @@ namespace TreatmentTime
         public List<List<double>> BeamOnLayerTimeList { get; set; } = new List<List<double>>();
         public List<List<double>> BeamOffLayerTimeList { get; set; } = new List<List<double>>();
         public List<List<double>> BeamTotLayerTimeList { get; set; } = new List<List<double>>();
+        public List<List<double>> CumBeamOnLayerTimeList { get; set; } = new List<List<double>>();
+        public List<List<double>> CumBeamOffLayerTimeList { get; set; } = new List<List<double>>();
+        public List<List<double>> CumBeamTotLayerTimeList { get; set; } = new List<List<double>>();
         public List<double> TotalBeamTimeList { get; set; } = new List<double>();
         public IonBeam EsapiBeamObj { get; set; }
         public void CalcTotalBeamTime()
         {
             List<double> tempTotalBeamTimeList = new List<double>();
             double layerStartTime = 0;
+            CumBeamOnLayerTimeList = CumulativeSum(BeamOnLayerTimeList);
+            CumBeamOffLayerTimeList = CumulativeSum(BeamOffLayerTimeList);
             for (int i = 0; i < BeamOnLayerTimeList.Count; i++)
             {
                 var sumList = BeamOnLayerTimeList[i].Zip(BeamOffLayerTimeList[i], (x, y) => x + y).ToList();
@@ -35,7 +40,26 @@ namespace TreatmentTime
                 layerStartTime = t_end + ProBeamLUT.layerSwitchTime;
                 tempTotalBeamTimeList.Add(t_end);
             }
+            CumBeamTotLayerTimeList = CumulativeSum(BeamTotLayerTimeList);
             TotalBeamTimeList = tempTotalBeamTimeList;
+        }
+
+        public static List<List<double>> CumulativeSum(List<List<double>> sequence)
+        {
+            double sum = 0;
+            var temp_sequence = new List<List<double>>();
+            foreach (var list in sequence)
+            {
+                var temp_list = new List<double>();
+                foreach (var p in list)
+                {
+                    sum += p;
+                    temp_list.Add(sum);
+                }
+                temp_sequence.Add(temp_list);
+                sum += ProBeamLUT.layerSwitchTime;
+            }
+            return temp_sequence;
         }
 
         private int calcBeamTreatmentTime(IonBeam beam)

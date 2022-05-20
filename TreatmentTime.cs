@@ -28,7 +28,7 @@ namespace VMS.TPS
         }
 
         const int dec = 4;
-        
+
         //public override void Run(PluginScriptContext context)
         public void Execute(ScriptContext context)
         {
@@ -65,10 +65,35 @@ namespace VMS.TPS
             }
             ProtonBeamTimes = ProtonBeamList;
             System.Windows.MessageBox.Show(message);
-            ShowDetailedBeamMessage();
+            //Uncomment below for detailed messages
+            ShowDetailedLayerMessage();
+            //ShowDetailedSpotMessage();
         }
 
-        public void ShowDetailedBeamMessage()
+        public void ShowDetailedSpotMessage()
+        {
+            foreach (ProtonBeamTime protonbeam in ProtonBeamTimes)
+            {
+                
+                for (int i = 0; i < protonbeam.BeamOnLayerTimeList.Count; i++)
+                {
+                    string detailedBeamMessage = "---------------------------------------------------------\r\n";
+                    detailedBeamMessage += (protonbeam.EsapiBeamObj.Id.ToString() + ", layer " + i.ToString() + " spot times in seconds. Layer Switch time = 1\r\n");
+                    detailedBeamMessage += ("SpotNo\t\tBeamOn\t\tBeamOff\t\tTotal\r\n");
+                    for (int j = 0; j < protonbeam.BeamOnLayerTimeList[i].Count; j++)
+                    {
+                        detailedBeamMessage += (j + 1).ToString() + "\t\t"
+                                        + Math.Round(protonbeam.CumBeamOnLayerTimeList[i][j], dec).ToString() + "\t\t"
+                                        + Math.Round(protonbeam.CumBeamOffLayerTimeList[i][j], dec).ToString() + "\t\t"
+                                        + Math.Round(protonbeam.CumBeamTotLayerTimeList[i][j], dec).ToString() + "\r\n";
+                    }
+                    System.Windows.MessageBox.Show(detailedBeamMessage);
+                }
+                
+            }
+        }
+
+        public void ShowDetailedLayerMessage()
         {
             foreach (ProtonBeamTime protonbeam in ProtonBeamTimes)
             {
