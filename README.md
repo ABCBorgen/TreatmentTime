@@ -1,8 +1,9 @@
 # TreatmentTime
-Calculates the time it takes to deliver fields from a proton plan. WIP
+Calculates the time it takes to deliver fields from a proton plan. WIP. Each center must perform their own data collection and quality assurance before employing the program.
 
 
 TreatmentTime.esapi.dll can be run directly from Eclipse to get a list for delivery duration for each field and layer in an open plan.
+
 Include ProtonBeamTime.cs and ProBeamLUT.cs in your project to perform calculations. ProBeamLUT.cs contains site-specific parameters.
 
 Quick example:
